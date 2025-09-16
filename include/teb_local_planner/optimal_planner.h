@@ -660,7 +660,14 @@ protected:
    * @see optimizeGraph
    */
   void AddEdgesVelocityObstacleRatio();
-  
+
+  /**
+   * @brief Add all edges (local cost functions) for wheels angle change of a holonomic robot
+   * @see buildGraph
+   * @see optimizeGraph
+   */
+  void AddEdgesKinematicsSwerve();
+
   //@}
   
   

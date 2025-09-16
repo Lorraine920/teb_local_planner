@@ -106,7 +106,9 @@ public:
     double acc_lim_theta; //!< Maximum angular acceleration of the robot
     double min_turning_radius; //!< Minimum turning radius of a carlike robot (diff-drive robot: zero);
     double wheelbase; //!< The distance between the drive shaft and steering axle (only required for a carlike robot with 'cmd_angle_instead_rotvel' enabled); The value might be negative for back-wheeled robots!
-    bool cmd_angle_instead_rotvel; //!< Substitute the rotational velocity in the commanded velocity message by the corresponding steering angle (check 'axles_distance')
+    double track_width;
+    bool cmd_angle_instead_rotvel;  //!< Substitute the rotational velocity in the commanded velocity message by the
+                                    //!< corresponding steering angle (check 'axles_distance')
     bool is_footprint_dynamic; //<! If true, updated the footprint before checking trajectory feasibility
     bool use_proportional_saturation; //<! If true, reduce all twists components (linear x and y, and angular z) proportionally if any exceed its corresponding bounds, instead of saturating each one individually
     double transform_tolerance = 0.5; //<! Tolerance when querying the TF Tree for a transformation (seconds)
@@ -174,6 +176,7 @@ public:
     double weight_velocity_obstacle_ratio; //!< Optimization weight for satisfying a maximum allowed velocity with respect to the distance to a static obstacle
     double weight_viapoint; //!< Optimization weight for minimizing the distance to via-points
     double weight_prefer_rotdir; //!< Optimization weight for preferring a specific turning direction (-> currently only activated if an oscillation is detected, see 'oscillation_recovery'
+    double weight_swerve_angle; //!< Optimization weight for minimizing the steering angle of a holonomic robot with swerve drive
 
     double weight_adapt_factor; //!< Some special weights (currently 'weight_obstacle') are repeatedly scaled by this factor in each outer TEB iteration (weight_new = weight_old*factor); Increasing weights iteratively instead of setting a huge value a-priori leads to better numerical conditions of the underlying optimization problem.
     double obstacle_cost_exponent; //!< Exponent for nonlinear obstacle cost (cost = linear_cost * obstacle_cost_exponent). Set to 1 to disable nonlinear cost (default)
@@ -284,6 +287,7 @@ public:
     robot.acc_lim_theta = 0.5;
     robot.min_turning_radius = 0;
     robot.wheelbase = 1.0;
+    robot.track_width = 1.0;
     robot.cmd_angle_instead_rotvel = false;
     robot.is_footprint_dynamic = false;
     robot.use_proportional_saturation = false;
@@ -341,6 +345,7 @@ public:
     optim.weight_velocity_obstacle_ratio = 0;
     optim.weight_viapoint = 1;
     optim.weight_prefer_rotdir = 50;
+    optim.weight_swerve_angle = 1;
 
     optim.weight_adapt_factor = 2.0;
     optim.obstacle_cost_exponent = 1.0;

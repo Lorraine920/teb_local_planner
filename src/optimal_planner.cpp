@@ -49,6 +49,7 @@
 #include <teb_local_planner/g2o_types/edge_dynamic_obstacle.h>
 #include <teb_local_planner/g2o_types/edge_via_point.h>
 #include <teb_local_planner/g2o_types/edge_prefer_rotdir.h>
+#include "teb_local_planner/g2o_types/edge_kinematics_swerve.h"
 
 #include <memory>
 #include <limits>
@@ -151,6 +152,8 @@ void TebOptimalPlanner::registerG2OTypes()
   factory->registerType("EDGE_DYNAMIC_OBSTACLE", new g2o::HyperGraphElementCreator<EdgeDynamicObstacle>);
   factory->registerType("EDGE_VIA_POINT", new g2o::HyperGraphElementCreator<EdgeViaPoint>);
   factory->registerType("EDGE_PREFER_ROTDIR", new g2o::HyperGraphElementCreator<EdgePreferRotDir>);
+  factory->registerType("EDGE_KINEMATICS_SWERVE", new g2o::HyperGraphElementCreator<EdgeKinematicsSwerve>);
+  factory->printRegisteredTypes(std::cout);
   return;
 }
 
@@ -351,6 +354,8 @@ bool TebOptimalPlanner::buildGraph(double weight_multiplier)
   AddEdgesTimeOptimal();	
 
   AddEdgesShortestPath();
+
+  AddEdgesKinematicsSwerve();
   
   if (cfg_->robot.min_turning_radius == 0 || cfg_->optim.weight_kinematics_turning_radius == 0)
     AddEdgesKinematicsDiffDrive(); // we have a differential drive robot
@@ -1016,6 +1021,36 @@ void TebOptimalPlanner::AddEdgesVelocityObstacleRatio()
       edge->setInformation(information);
       edge->setParameters(*cfg_, obstacle.get());
       optimizer_->addEdge(edge);
+    }
+  }
+}
+
+void TebOptimalPlanner::AddEdgesKinematicsSwerve(){
+  if (cfg_->optim.weight_kinematics_nh!=0 && cfg_->optim.weight_kinematics_turning_radius!=0) 
+    return; // if weight equals zero skip adding edges!
+
+  int n = teb_.sizePoses();  
+    
+  if (cfg_->robot.max_vel_y != 0 || cfg_->robot.acc_lim_y != 0) // non-holonomic robot
+  {
+    Eigen::Matrix<double,4,4> information;
+    information.fill(0);
+    information(0,0) = cfg_->optim.weight_swerve_angle;
+    information(1,1) = cfg_->optim.weight_swerve_angle;
+    information(2,2) = cfg_->optim.weight_swerve_angle;
+    information(3,3) = cfg_->optim.weight_swerve_angle;
+    
+
+    // now add the usual acceleration edge for each tuple of three teb poses
+    for (int i=0; i < n - 2; ++i)
+    {
+      EdgeKinematicsSwerve* swerve_edge = new EdgeKinematicsSwerve;
+      swerve_edge->setVertex(0,teb_.PoseVertex(i));
+      swerve_edge->setVertex(1,teb_.PoseVertex(i+1));
+      swerve_edge->setVertex(2,teb_.TimeDiffVertex(i));
+      swerve_edge->setInformation(information);
+      swerve_edge->setTebConfig(*cfg_);
+      optimizer_->addEdge(swerve_edge);
     }
   }
 }
