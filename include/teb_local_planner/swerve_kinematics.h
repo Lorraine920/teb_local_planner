@@ -125,7 +125,7 @@ public:
    * @param prev_steering_angles The steering angles from the previous time step.
    * @return A vector of WheelState structs, one for each wheel.
    */
-  std::vector<WheelState> inverseKinematicsReal(double vx, double vy, double omega, const std::vector<double>& prev_steering_angles) const
+  std::vector<WheelState> inverseKinematicsReal(double vx, double vy, double omega) const
   {
     std::vector<WheelState> wheel_states(4);
 

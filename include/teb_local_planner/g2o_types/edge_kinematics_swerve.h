@@ -86,24 +86,31 @@ public:
         double mode2_center = M_PI;
 
         // 定义每个模式的“舒适区”宽度
-        double sigma = 50 * M_PI / 180.0; // e.g., 45 degrees standard deviation
+        double sigma = 60 * M_PI / 180.0; // e.g., 60 degrees standard deviation
 
-        // 计算当前角度到两个模式中心的“距离”
-        // 注意要用 normalize_theta 来处理环绕
-        double dist_to_mode1 = std::abs(std::abs(angle) - mode1_center);
-        double dist_to_mode2 = std::abs(std::abs(angle) - mode2_center);
 
         // 使用高斯函数的倒数形式来创建“山谷”
         // exp(-x^2) 是一个钟形曲线，在x=0时为1，在x增大时趋于0。
         // 1 - exp(-x^2) 就是一个在x=0时为0，在x增大时趋于1的“山谷”形状。
-        double valley1 = 1.0 - std::exp(- (dist_to_mode1 * dist_to_mode1) / (2 * sigma * sigma) );
-        double valley2 = 1.0 - std::exp(- (dist_to_mode2 * dist_to_mode2) / (2 * sigma * sigma) );
+        double valley1 = custom_gaussian(std::abs(angle), mode1_center, sigma);
+        double valley2 = custom_gaussian(std::abs(angle), mode2_center, sigma);
 
         // 我们想要的是，当角度离任一中心点近时，成本都低。
         // 所以我们取这两个“山谷”函数的乘积。
         // 当 angle 接近 mode1 或 mode2 时，其中一个 valley 函数接近0，乘积就接近0。
         // 当 angle 处于两个模式中间时 (e.g., 90度)，两个 valley 函数都接近1，乘积也接近1 (成本最高)。
         double penalty = valley1 * valley2;
+
+        // process panalty
+        double penalty_max = custom_gaussian(M_PI/2, mode1_center, sigma) * custom_gaussian(M_PI/2, mode2_center, sigma);
+
+        if(penalty_max > 0)
+            penalty = penalty / penalty_max; // normalize to [0, 1]
+        else
+            penalty = 0.0;
+
+        double power = 3.0;
+        penalty = std::pow(penalty, power); // sharpen the peak
 
         _error[i] = penalty;
     }
@@ -114,6 +121,11 @@ public:
     ROS_ASSERT_MSG(std::isfinite(_error[1]), "EdgeKinematicsSwerve::computeError() wheel swerve angle: _error[1]=%f\n",_error[1]);
     ROS_ASSERT_MSG(std::isfinite(_error[2]), "EdgeKinematicsSwerve::computeError() wheel swerve angle: _error[2]=%f\n",_error[2]);
     ROS_ASSERT_MSG(std::isfinite(_error[3]), "EdgeKinematicsSwerve::computeError() wheel swerve angle: _error[3]=%f\n",_error[3]);
+  }
+
+  double custom_gaussian(double x, double mu, double sigma)
+  {
+      return 1.0 - std::exp(- ( (x - mu) * (x - mu) ) / (2 * sigma * sigma) );
   }
 
 

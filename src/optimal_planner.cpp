@@ -50,6 +50,8 @@
 #include <teb_local_planner/g2o_types/edge_via_point.h>
 #include <teb_local_planner/g2o_types/edge_prefer_rotdir.h>
 #include "teb_local_planner/g2o_types/edge_kinematics_swerve.h"
+#include "teb_local_planner/g2o_types/edge_velocity_deadzone.h"
+#include "teb_local_planner/g2o_types/edge_direction_motion_direction.h"
 
 #include <memory>
 #include <limits>
@@ -153,7 +155,8 @@ void TebOptimalPlanner::registerG2OTypes()
   factory->registerType("EDGE_VIA_POINT", new g2o::HyperGraphElementCreator<EdgeViaPoint>);
   factory->registerType("EDGE_PREFER_ROTDIR", new g2o::HyperGraphElementCreator<EdgePreferRotDir>);
   factory->registerType("EDGE_KINEMATICS_SWERVE", new g2o::HyperGraphElementCreator<EdgeKinematicsSwerve>);
-  factory->printRegisteredTypes(std::cout);
+  factory->registerType("EDGE_VELOCITY_DEADZONE", new g2o::HyperGraphElementCreator<EdgeVelocityDeadzone>);
+  factory->registerType("EDGE_DIRECTION_MOTION", new g2o::HyperGraphElementCreator<EdgeDirectionMotion>);
   return;
 }
 
@@ -355,8 +358,12 @@ bool TebOptimalPlanner::buildGraph(double weight_multiplier)
 
   AddEdgesShortestPath();
 
+  AddEdgesDirectionMotion();
+
   AddEdgesKinematicsSwerve();
-  
+
+  AddEdgesVelocityDeadzone();
+
   if (cfg_->robot.min_turning_radius == 0 || cfg_->optim.weight_kinematics_turning_radius == 0)
     AddEdgesKinematicsDiffDrive(); // we have a differential drive robot
   else
@@ -1026,6 +1033,33 @@ void TebOptimalPlanner::AddEdgesVelocityObstacleRatio()
 }
 
 void TebOptimalPlanner::AddEdgesKinematicsSwerve(){
+  // if (cfg_->optim.weight_kinematics_nh!=0 && cfg_->optim.weight_kinematics_turning_radius!=0) 
+  //   return; // if weight equals zero skip adding edges!
+
+  int n = teb_.sizePoses();  
+  
+  Eigen::Matrix<double,4,4> information;
+  information.fill(0);
+  information(0,0) = cfg_->optim.weight_swerve_angle;
+  information(1,1) = cfg_->optim.weight_swerve_angle;
+  information(2,2) = cfg_->optim.weight_swerve_angle;
+  information(3,3) = cfg_->optim.weight_swerve_angle;
+  
+
+  // now add the usual acceleration edge for each tuple of three teb poses
+  for (int i=0; i < n - 1; ++i)
+  {
+    EdgeKinematicsSwerve* swerve_edge = new EdgeKinematicsSwerve;
+    swerve_edge->setVertex(0,teb_.PoseVertex(i));
+    swerve_edge->setVertex(1,teb_.PoseVertex(i+1));
+    swerve_edge->setVertex(2,teb_.TimeDiffVertex(i));
+    swerve_edge->setInformation(information);
+    swerve_edge->setTebConfig(*cfg_);
+    optimizer_->addEdge(swerve_edge);
+  }
+}
+
+void TebOptimalPlanner::AddEdgesVelocityDeadzone(){
   if (cfg_->optim.weight_kinematics_nh!=0 && cfg_->optim.weight_kinematics_turning_radius!=0) 
     return; // if weight equals zero skip adding edges!
 
@@ -1033,26 +1067,59 @@ void TebOptimalPlanner::AddEdgesKinematicsSwerve(){
     
   if (cfg_->robot.max_vel_y != 0 || cfg_->robot.acc_lim_y != 0) // non-holonomic robot
   {
-    Eigen::Matrix<double,4,4> information;
+    Eigen::Matrix<double,2,2> information;
     information.fill(0);
-    information(0,0) = cfg_->optim.weight_swerve_angle;
-    information(1,1) = cfg_->optim.weight_swerve_angle;
-    information(2,2) = cfg_->optim.weight_swerve_angle;
-    information(3,3) = cfg_->optim.weight_swerve_angle;
+    information(0,0) = cfg_->optim.weight_velocity_deadzone;
+    information(1,1) = cfg_->optim.weight_velocity_deadzone;
     
 
     // now add the usual acceleration edge for each tuple of three teb poses
     for (int i=0; i < n - 2; ++i)
     {
-      EdgeKinematicsSwerve* swerve_edge = new EdgeKinematicsSwerve;
-      swerve_edge->setVertex(0,teb_.PoseVertex(i));
-      swerve_edge->setVertex(1,teb_.PoseVertex(i+1));
-      swerve_edge->setVertex(2,teb_.TimeDiffVertex(i));
-      swerve_edge->setInformation(information);
-      swerve_edge->setTebConfig(*cfg_);
-      optimizer_->addEdge(swerve_edge);
+      EdgeVelocityDeadzone* deadzone_edge = new EdgeVelocityDeadzone;
+      deadzone_edge->setVertex(0,teb_.PoseVertex(i));
+      deadzone_edge->setVertex(1,teb_.PoseVertex(i+1));
+      deadzone_edge->setVertex(2,teb_.TimeDiffVertex(i));
+      deadzone_edge->setInformation(information);
+      deadzone_edge->setTebConfig(*cfg_);
+      optimizer_->addEdge(deadzone_edge);
     }
   }
+}
+
+void TebOptimalPlanner::AddEdgesDirectionMotion(){
+  if (cfg_->optim.weight_kinematics_nh==0 && cfg_->optim.weight_kinematics_turning_radius==0) 
+    return; // if weight equals zero skip adding edges!
+  int n = teb_.sizePoses();  
+    
+  // if (cfg_->robot.max_vel_y == 0 && cfg_->robot.acc_lim_y == 0) // non-holonomic robot
+  // {
+    Eigen::Matrix<double,1,1> information;
+    information.fill(0);
+    information(0,0) = cfg_->optim.weight_direction_change;
+    
+
+    // now add the usual acceleration edge for each tuple of three teb poses
+    for (int i=0; i < n - 2; ++i)
+    {
+      EdgeDirectionMotion* direction_motion_edge = new EdgeDirectionMotion;
+      direction_motion_edge->setVertex(0,teb_.PoseVertex(i));
+      ROS_INFO_ONCE("DEBUG1");
+      direction_motion_edge->setVertex(1,teb_.PoseVertex(i + 1));
+      ROS_INFO_ONCE("DEBUG1");
+      direction_motion_edge->setVertex(2,teb_.PoseVertex(i + 2));
+ROS_INFO_ONCE("DEBUG1");
+      direction_motion_edge->setVertex(3,teb_.TimeDiffVertex(i));
+      ROS_INFO_ONCE("DEBUG1");
+      direction_motion_edge->setVertex(4,teb_.TimeDiffVertex(i + 1));
+      ROS_INFO_ONCE("DEBUG1");
+      direction_motion_edge->setInformation(information);
+      ROS_INFO_ONCE("DEBUG1");
+      direction_motion_edge->setTebConfig(*cfg_);
+      optimizer_->addEdge(direction_motion_edge);
+    }
+    ROS_INFO_ONCE("TebOptimalPlanner::AddEdgesDirectionMotion(): Using direction motion edges. Make sure that this is intended, as this might lead to odd behavior for closed-loop planning!");
+  // }
 }
 
 bool TebOptimalPlanner::hasDiverged() const

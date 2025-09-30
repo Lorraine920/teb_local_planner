@@ -668,6 +668,20 @@ protected:
    */
   void AddEdgesKinematicsSwerve();
 
+  /**
+   * @brief Add all edges (local cost functions) for keeping the velocity of a vertex outside a specified deadzone interval around zero
+   * @see buildGraph
+   * @see optimizeGraph
+   */
+  void AddEdgesVelocityDeadzone();
+
+    /**
+   * @brief Add all edges (local cost functions) for reducing the angular velocity of a vertex due to its translational velocity
+   * @see buildGraph
+   * @see optimizeGraph
+   */
+  void AddEdgesDirectionMotion();
+
   //@}
   
   
